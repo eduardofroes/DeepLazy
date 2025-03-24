@@ -1,100 +1,59 @@
-# 🧠 DeepLazy — Lazy Loading Framework for Large Language Models (LLMs)
+# 🧠 DeepLazy — Lazy Loading Framework for Large Language Models
 
-**DeepLazy** is a Python framework designed to efficiently load and run **large-scale language models (LLMs)** using a **lazy-loading mechanism**, drastically reducing memory usage and initialization time.
+**DeepLazy** is a modular and extensible Python library that enables **lazy loading of large language models (LLMs)** — only loading the model weights layer-by-layer on-demand during inference, significantly reducing memory usage and startup time.
 
----
+Ideal for:
 
-## 🚀 Why DeepLazy?
-
-Traditional loading of large models consumes a huge amount of memory, even when only a few layers are used at a time. **DeepLazy** solves this by:
-
-- Loading only **a few layers at a time**.
-- **Unloading layers after execution**.
-- Supporting **in-memory or Redis-based caching**.
-- Providing a **real-time terminal dashboard** (K9s-like interface) with layer-by-layer tracking.
+- Heavy Transformer-based models (e.g., LLaMA, DeepSeek, Falcon)
+- Low-memory environments (edge devices, research clusters)
+- Fine-grained execution profiling and system monitoring
 
 ---
 
-## 📦 Features
+## 📦 Installation
 
-- ✅ Lazy layer-by-layer loading
-- ✅ Support for **PyTorch** and **TensorFlow**
-- ✅ Integration with `.safetensors` format
-- ✅ Memory and execution time tracking
-- ✅ **real-time terminal dashboard**
-- ✅ Redis or in-memory weight caching
-
-## 🔧 Installation
+You can install **DeepLazy** directly from [PyPI](https://pypi.org/project/deeplazy):
 
 ```bash
-pip install -r requirements.txt
+pip install deeplazy
 ```
 
-Dependencies include:
-
-- `torch` or `tensorflow`
-- `psutil`
-- `safetensors`
-- `rich`
-- `redis` _(optional)_
+> Requires Python ≥ 3.8 and `torch` or `tensorflow`, depending on the framework you intend to use.
 
 ---
 
-## 🧪 Example Usage
+## 🚀 Quick Example
 
 ```python
-# example_loader.py
-import os
-import torch
-import psutil
 import asyncio
-import time
-
-from storage.safetensors_loader import SafeTensorStorageManager
-from core.lazy_model_builder import LazyModelBuilder
-
-
-def print_memory(stage=""):
-    mem = psutil.Process(os.getpid()).memory_info().rss / 1024**2
-    print(f"[MEMORY] {stage}: {mem:.2f} MB")
-
+import torch
+from deeplazy.storage.safetensors_loader import SafeTensorStorageManager
+from deeplazy.core.lazy_model_builder import LazyModelBuilder
 
 async def main():
-    # Step 1 - Initialize SafeTensor Storage
+    # Step 1: Initialize storage from .safetensors
     storage = SafeTensorStorageManager(
-        shards_dir="/path/to/model_directory",
-        index_path="/path/to/model_directory/model.safetensors.index.json"
+        "./your_model_dir"
     )
 
-    # Step 2 - Build Lazy Model
+    # Step 2: Build the lazy model
     builder = LazyModelBuilder(
-        framework='torch',                             # or 'tensorflow'
-        config_path="/path/to/model_directory/config.json",
-        index_path="/path/to/model_directory/model.safetensors.index.json",
+        framework='torch',
         storage=storage,
-        max_layers_in_memory=30,
+        config_path="./your_model_dir/config.json",
+        max_layers_in_memory=20,
         use_cache=True,
-        cache_type='memory',                           # 'memory' or 'redis'
-        redis_config=None
+        cache_type='memory'  # or 'redis'
     )
     model = builder.build_model()
 
-    # Step 3 - Prepare Dummy Input
+    # Step 3: Prepare input
     input_dim = model.metadata.get("hidden_size", 768)
-    dummy_input = torch.randint(0, input_dim, size=(1, input_dim), dtype=torch.long)
+    x = torch.randint(low=0, high=input_dim, size=(1, input_dim), dtype=torch.long)
 
-    print_memory("Before Forward Pass")
-
-    # Step 4 - Run Inference (with dashboard)
-    start_time = time.time()
-    output = await model.forward(dummy_input, enable_dashboard=True)
-    end_time = time.time()
-
-    print_memory("After Forward Pass")
-
-    print(f"✅ Inference Time: {end_time - start_time:.4f} seconds")
-    print("Output Shape:", output.shape)
-
+    # Step 4: Run inference
+    output = await model.forward(x, enable_dashboard=True)
+    print("✅ Output shape:", output.shape)
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -102,69 +61,50 @@ if __name__ == "__main__":
 
 ---
 
-## 📊 Real-Time Terminal Dashboard
+## 📊 Built-in Dashboard (Optional)
 
-When `enable_dashboard=True` is passed to `.forward()`, DeepLazy launches a real-time K9s-style dashboard with:
+Enable a **real-time terminal dashboard** (like `k9s`) with:
 
-- Layer-by-layer execution status
+- Layer-by-layer execution monitoring
+- Memory consumption
+- CPU/GPU usage
 - Execution time per layer
-- Live memory usage
-- CPU and GPU usage
-- Framework and cache configuration
+- Final model stats
 
-📸 Example Output:
+Just pass `enable_dashboard=True` in `.forward()`.
 
-```
-🧠 Lazy LLM Execution Dashboard — Model: deepseek-v2
-Layer                                | Built | Time (s) | Memory (MB)
-------------------------------------|-------|----------|-------------
-model.layer.0.mlp.gate_proj         | ✅    | 0.11     | 1032.54
-...
+---
 
-📊 System Info
-📦 Model: deepseek-v2
-📁 Safetensors Path: /models/deepseek-v2
-⏱️ Total Execution Time: 6.87 seconds
-🧠 Final Memory Usage: 1380.12 MB
-💻 CPU Usage: 47.3%
-🖥️ GPU Usage: 63%
-🔄 Max Layers in Memory: 30
-🔄 Cache Type: memory
-⚙️ Framework: torch
+## 🔧 Cache Support
+
+Choose between:
+
+- `memory` cache (default): in-memory layer weight caching.
+- `redis` cache: share cache across processes/machines.
+
+Example:
+
+```python
+cache_type='redis',
+redis_config={'host': 'localhost', 'port': 6379, 'db': 0, 'prefix': 'layer_cache'}
 ```
 
 ---
 
-## ⚡ Redis Cache Support
+## 📁 File Format
 
-You can enable Redis caching like this:
-
-```python
-LazyModelBuilder(
-    cache_type='redis',
-    redis_config={
-        'host': 'localhost',
-        'port': 6379,
-        'db': 0,
-        'prefix': 'deeplazy_cache'
-    },
-    ...
-)
-```
+- DeepLazy uses **`.safetensors` format with index.json**.
+- Compatible with models exported via 🤗 Transformers or custom serialization.
 
 ---
 
 ## 🤝 Contributing
 
-Feel free to fork the project and submit pull requests for:
-
-- Adapter improvements
-- Support for more frameworks
-- Optimizations in caching and memory handling
-- UX improvements in the dashboard
+Pull requests and feature suggestions are welcome.  
+Please open an issue first to discuss major changes.
 
 ---
 
-## 📄 License
+## 📜 License
 
-MIT License © 2025
+MIT License — Feel free to use, fork, and build on top of it.
