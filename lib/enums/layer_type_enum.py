@@ -1,0 +1,27 @@
+from enum import Enum
+
+
+class LayerType(str, Enum):
+    LINEAR = "Linear"
+    EMBEDDING = "Embedding"
+    LAYERNORM = "LayerNorm"
+    RMSNORM = "RMSNorm"
+    BATCHNORM = "BatchNorm"
+    GROUPNORM = "GroupNorm"
+    INSTANCENORM = "InstanceNorm"
+    ATTENTION = "Attention"
+    MULTIHEAD_ATTENTION = "MultiheadAttention"
+    SELF_ATTENTION = "SelfAttention"
+    CROSS_ATTENTION = "CrossAttention"
+    ATTENTION_PROJECTION = "AttentionProjection"
+    CONV1D = "Conv1D"
+    CONV2D = "Conv2D"
+    CONV3D = "Conv3D"
+    DEPTHWISE_CONV = "DepthwiseConv"
+    CONV = "Conv"
+    ACTIVATION = "Activation"
+    DROPOUT = "Dropout"
+    CLASSIFIER = "Classifier"
+    BIAS = "Bias"
+    SCALING = "Scaling"
+    UNKNOWN = "Unknown"

@@ -1,0 +1,9 @@
+torch>=2.2.2
+tensorflow>=2.16.1
+keras>=2.16.1
+safetensors>=0.4.3
+numpy>=1.26.4
+transformers>=4.36.0
+redis>=5.0.0
+rich>=13.10.0
+psutil>=6.0.0
