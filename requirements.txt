@@ -7,3 +7,4 @@ transformers>=4.36.0
 redis>=5.0.0
 rich>=13.10.0
 psutil>=6.0.0
+twine>=4.0.2

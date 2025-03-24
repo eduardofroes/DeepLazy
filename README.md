@@ -21,41 +21,8 @@ Traditional loading of large models consumes a huge amount of memory, even when 
 - ✅ Support for **PyTorch** and **TensorFlow**
 - ✅ Integration with `.safetensors` format
 - ✅ Memory and execution time tracking
-- ✅ K9s-style **real-time terminal dashboard**
+- ✅ **real-time terminal dashboard**
 - ✅ Redis or in-memory weight caching
-
----
-
-## 📁 Folder Structure
-
-```
-deeplazy/
-│
-├── core/
-│   ├── lazy_model.py
-│   ├── lazy_model_builder.py
-│   ├── lazy_layer.py
-│   ├── architecture_parser.py
-│   └── layer_cache.py
-│
-├── adapters/
-│   ├── pytorch_adapter.py
-│   └── tensorflow_adapter.py
-│
-├── storage/
-│   └── safetensors_loader.py
-│
-├── ui/
-│   └── dashboard_monitor.py
-│
-├── enums/
-│   ├── framework_enum.py
-│   └── layer_type_enum.py
-│
-└── example_loader.py  ← Example usage
-```
-
----
 
 ## 🔧 Installation
 
