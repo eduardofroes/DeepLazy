@@ -9,6 +9,7 @@ from core.redis_layer_cache import RedisLayerCache
 from ui.dashboard_monitor import DashboardMonitor
 from enums.framework_enum import FrameworkType
 from enums.layer_type_enum import LayerType
+from core.pth_architecture_parser import PyTorchGenericLayerParser
 
 
 class LazyModelBuilder:
@@ -58,17 +59,20 @@ class LazyModelBuilder:
 
     def build_model(self):
         parser = ModelArchitectureParser(
-            self.config_path, self.storage.get_index())
+            self.config_path, self.index_path, self.storage.get_index())
         schema = parser.get_architecture_schema()
         loader = LazyTensorLoader(
             self.storage, framework=self.framework, cache=self.cache)
 
-        metadata = schema.pop("_metadata", {})
+        metadata = schema.pop("metadata", {})
         layers = {}
 
         for layer_name, layer_config in schema.items():
-            keys = [k for k in parser.tensor_index if k.startswith(
-                layer_name) and not k.endswith("_scale_inv")]
+            if layer_config.get('tied_with', None) is not None:
+                keys = [layer_config['tied_with']]
+            else:
+                keys = [k for k in parser.tensor_index if k.startswith(
+                    layer_name) and not k.endswith("_scale_inv")]
             if not keys:
                 continue
 
@@ -83,7 +87,10 @@ class LazyModelBuilder:
                 tensor_loader=loader,
                 keys=keys,
                 config=layer_config,
-                framework=FrameworkType(self.framework)
+                framework=FrameworkType(self.framework),
+                metadata=metadata,
+                activation_function=layer_config.get(
+                    "activation_function", None)
             )
             layers[layer_name] = lazy_layer
 
@@ -101,6 +108,72 @@ class LazyModelBuilder:
         return LazyModel(
             layers,
             metadata=metadata,
+            max_layers_in_memory=self.max_layers_in_memory,
+            dashboard=self.dashboard
+        )
+
+    def build_pytorch_model(self, local_storage):
+        """
+        Constrói um modelo PyTorch com LazyLayer a partir do estado salvo.
+        """
+        state_dict = local_storage.get_index()
+        parser = PyTorchGenericLayerParser(
+            state_dict, config_path=self.config_path)
+        schema = parser.parse()
+        loader = LazyTensorLoader(
+            self.storage,
+            framework=self.framework,
+            cache=self.cache
+        )
+
+        layers = {}
+
+        for layer_name, layer_config in schema.items():
+            # Tied weights: usa o peso de outro layer
+            if layer_config.get('tied_with'):
+                keys = [layer_config['tied_with']]
+            else:
+                # Recupera todas as chaves que pertencem ao prefixo
+                keys = [
+                    k for k in state_dict.keys()
+                    if k.startswith(layer_name) and not k.endswith("_scale_inv")
+                ]
+
+            if not keys:
+                continue
+
+            try:
+                layer_type_enum = LayerType(layer_config["type"])
+            except ValueError:
+                layer_type_enum = LayerType.UNKNOWN
+
+            lazy_layer = LazyLayer(
+                layer_type=layer_type_enum,
+                adapter=self.adapter,
+                tensor_loader=loader,
+                keys=keys,
+                config=layer_config,
+                framework=FrameworkType(self.framework),
+                metadata={},
+                activation_function=layer_config.get("activation_function")
+            )
+
+            layers[layer_name] = lazy_layer
+
+        model_name = getattr(parser.config, "_name_or_path", "LazyLLM")
+
+        self.dashboard = DashboardMonitor(
+            model_name=model_name,
+            safetensors_path=self.storage.file_path,
+            max_visible_layers=20,
+            max_layers_in_memory=self.max_layers_in_memory,
+            cache_type=self.cache_type,
+            framework=self.framework
+        )
+
+        return LazyModel(
+            layers=layers,
+            metadata={},
             max_layers_in_memory=self.max_layers_in_memory,
             dashboard=self.dashboard
         )

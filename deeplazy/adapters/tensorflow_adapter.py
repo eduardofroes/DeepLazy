@@ -74,17 +74,6 @@ class TensorFlowAdapter(LayerAdapter):
             scale_value = config.get("scale", 1.0)
             return tf.keras.layers.Lambda(lambda x: x * scale_value)
 
-        elif layer_type == "Activation":
-            act = config.get("activation_function", "gelu").lower()
-            activations = {
-                "gelu": tf.keras.activations.gelu,
-                "relu": tf.keras.activations.relu,
-                "silu": tf.keras.activations.swish,
-                "tanh": tf.keras.activations.tanh,
-                "softmax": tf.keras.activations.softmax
-            }
-            return tf.keras.layers.Activation(activations.get(act, tf.keras.activations.gelu))
-
         elif layer_type == "Dropout":
             return tf.keras.layers.Dropout(config.get("dropout_prob", 0.1))
 
