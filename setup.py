@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="deeplazy",
-    version="1.0.2",
+    version="1.0.3",
     author="DeepLazy Team",
     author_email="eduardomfroes@gmail.com",
     description="Lazy loading framework for large-scale LLMs using safetensors.",
