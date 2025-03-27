@@ -5,6 +5,7 @@ from deeplazy.core.lazy_tensor_loader import LazyLoader
 import torch
 import psutil
 import os
+from deeplazy.ui.dashboard_monitor import DashboardMonitor
 
 
 def print_memory(stage=""):
@@ -22,8 +23,11 @@ if __name__ == "__main__":
 
     cache = LocalLRUCache(capacity=10)
 
+    monitor = DashboardMonitor()
+    monitor.enable()
+
     loader = LazyLoader(weights_path=[MODEL_PATH],
-                        device='cpu', cache_backend=cache)
+                        device='cpu', cache_backend=cache, enable_monitor=True)
 
     model = LazyModel(
         config=GPT2Config.from_pretrained("gpt2"),

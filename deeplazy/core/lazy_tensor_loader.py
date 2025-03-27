@@ -3,6 +3,10 @@ from safetensors import safe_open
 import gc
 from typing import Optional, Union
 import os
+import time
+from deeplazy.core.lazy_redis_cache import RedisCacheBackend
+from deeplazy.ui.dashboard_monitor import DashboardMonitor
+from deeplazy.core.lazy_cache import LocalLRUCache
 
 
 def print_memory(stage=""):
@@ -13,7 +17,27 @@ def print_memory(stage=""):
 
 
 class LazyLoader:
-    def __init__(self, weights_path: Union[str, list], device='cpu', cache_backend=None):
+    def __init__(self, weights_path: Union[str, list], device='cpu', cache_backend=None, enable_monitor=False, model_name=None):
+
+        if enable_monitor:
+
+            capacity = 0
+            cache_type = None
+            if isinstance(cache_backend, LocalLRUCache):
+                capacity = cache_backend.capacity
+                cache_type = "LRU"
+            elif isinstance(cache_backend, RedisCacheBackend):
+                capacity = 0
+                cache_type = "Redis"
+            else:
+                capacity = 0
+
+            self.monitor = DashboardMonitor(
+                model_name=model_name, safetensors_path=weights_path, framework="pytorch", cache_type=cache_type, max_layers_in_memory=capacity)
+            self.monitor.enable()
+        else:
+            self.monitor = None
+
         if isinstance(weights_path, str):
             self.weights_paths = [weights_path]
         else:
@@ -48,6 +72,8 @@ class LazyLoader:
             return
 
         module_weights = {}
+        start_time = time.time()
+
         if self.is_safetensors:
             for handler in self.file_handlers:
                 for key in handler.keys():
@@ -63,6 +89,10 @@ class LazyLoader:
 
         if module_weights and self.cache:
             self.cache.put(module_name, module_weights)
+
+        exec_time = time.time() - start_time
+        if self.monitor:
+            self.monitor.record_layer(module_name, exec_time)
 
     def unload_module(self, module_name):
         if self.cache:

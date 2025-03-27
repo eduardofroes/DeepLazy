@@ -1,3 +1,8 @@
+import torch
+from safetensors import safe_open
+import gc
+from typing import Optional, Union
+import os
 from rich.live import Live
 from rich.table import Table
 from rich.panel import Panel
@@ -6,8 +11,12 @@ from rich.layout import Layout
 from rich.align import Align
 import time
 import psutil
-import os
-import torch
+
+
+def print_memory(stage=""):
+    process = psutil.Process(os.getpid())
+    mem = process.memory_info().rss / 1024**2
+    print(f"{stage}: {mem:.2f} MB")
 
 
 class DashboardMonitor:
@@ -51,7 +60,7 @@ class DashboardMonitor:
 
     def _build_table(self):
         table = Table(
-            title=f"🧠 Execution Dashboard — Model: {self.model_name}",
+            title=f"\U0001F9E0 Execution Dashboard — Model: {self.model_name}",
             expand=True
         )
         table.add_column("Layer", justify="left",
@@ -107,7 +116,6 @@ class DashboardMonitor:
         return layout
 
     def _footer_line_count(self):
-        # Count lines in footer dynamically
         footer_text = (
             f"📦 Model: {self.model_name}\n"
             f"📁 Safetensors Path: {self.safetensors_path}\n"
@@ -136,7 +144,7 @@ class DashboardMonitor:
     def _gpu_usage(self):
         try:
             if torch.cuda.is_available() and torch.cuda.device_count() > 0:
-                return f"{torch.cuda.utilization(0)}%" if hasattr(torch.cuda, 'utilization') else "N/A"
+                return f"{torch.cuda.memory_allocated() / (1024 ** 2):.1f} MB"
         except Exception:
             pass
         return "N/A"
