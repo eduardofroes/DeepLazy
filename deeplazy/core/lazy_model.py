@@ -1,26 +1,31 @@
 import torch.nn as nn
 from functools import wraps
 
-from deeplazy.core.lazy_model_patcher import LazyModelPatcher
-import torch
+from deeplazy.core.pytorch_lazy_model_patcher import PytorchLazyModelPatcher
+from deeplazy.core.tensorflow_lazy_model_patcher import TensorflowLazyModelPatcher
+
+from deeplazy.enums.framework_enum import FrameworkType
 
 
-class LazyModel(nn.Module):
-    def __init__(self, config=None, cls, loader):
-        super().__init__()
+class LazyModel:
+    def __init__(self, config=None, cls=None, loader=None):
         self.loader = loader
+        self.framework = loader.framework
 
         if config is not None:
-            self.base_model = cls(config).to(self.loader.device)
+            self.model_instance = cls(config)
         else:
-            self.base_model = cls().to(self.loader.device)
+            self.model_instance = cls()
 
-        self.patcher = LazyModelPatcher(self.loader)
-        self.model = self.patcher.patch(self.base_model)
+        if self.framework == FrameworkType.PYTORCH:
+            patcher = PytorchLazyModelPatcher(self.loader)
+        elif self.framework == FrameworkType.TENSORFLOW:
+            patcher = TensorflowLazyModelPatcher(self.loader)
 
-    def forward(self, *args, **kwargs):
-        with torch.inference_mode():
-            return self.model(*args, **kwargs)
+        self.model = patcher.patch(self.model_instance)
+
+    def __call__(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
 
     def to(self, device):
         self.loader.device = device

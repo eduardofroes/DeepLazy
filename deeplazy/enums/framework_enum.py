@@ -2,5 +2,5 @@ from enum import Enum
 
 
 class FrameworkType(str, Enum):
-    TORCH = "torch"
+    PYTORCH = "pytorch"
     TENSORFLOW = "tensorflow"

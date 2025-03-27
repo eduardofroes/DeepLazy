@@ -30,49 +30,55 @@ Below is a more detailed example demonstrating the use of DeepLazy with a GPT-2 
 ```python
 from deeplazy.core.lazy_model import LazyModel
 from transformers import AutoTokenizer, GPT2Model, GPT2Config
-from deeplazy.core.lazy_cache import LocalLRUCache
+from deeplazy.core.lazy_cache import PytorchLocalLRUCache
 from deeplazy.core.lazy_tensor_loader import LazyLoader
 import torch
-import psutil
-import os
-from deeplazy.ui.dashboard_monitor import DashboardMonitor
+from deeplazy.enums.framework_enum import FrameworkType
 
-def print_memory(stage=""):
-    process = psutil.Process(os.getpid())
-    mem = process.memory_info().rss / 1024**2
-    print(f"{stage}: {mem:.2f} MB")
+
 
 if __name__ == "__main__":
-    MODEL_PATH = "/opt/repository/gpt2_safetensors/model.safetensors"
-
-    print_memory("Início")
-
-    tokenizer = AutoTokenizer.from_pretrained("gpt2")
-
-    cache = LocalLRUCache(capacity=10)
-
-    monitor = DashboardMonitor()
-    monitor.enable()
-
-    loader = LazyLoader(weights_path=[MODEL_PATH],
-                        device='cpu', cache_backend=cache, enable_monitor=True)
-
-    model = LazyModel(
-        config=GPT2Config.from_pretrained("gpt2"),
-        cls=GPT2Model,
-        loader=loader
+    pt_loader = LazyLoader(
+        weights_path=["/opt/repository/gpt2_safetensors/model.safetensors"],
+        device="cpu",
+        cache_backend=PytorchLocalLRUCache(capacity=10),
+        enable_monitor=True,
+        model_name="gpt2_pytorch",
+        framework=FrameworkType.PYTORCH
     )
 
-    inputs = tokenizer("Texto exemplo", return_tensors="pt")
+    from transformers.models.gpt2.modeling_gpt2 import GPT2Model
+    pt_model = LazyModel(config=GPT2Config(), cls=GPT2Model, loader=pt_loader)
+    pt_input = torch.randint(0, 1000, (1, 10))
+    pt_output = pt_model(input_ids=pt_input)
+    print("PyTorch GPT2 output:", pt_output.last_hidden_state.shape)
+```
 
-    outputs1 = model(**inputs)
-    print(outputs1)
-    print_memory("Após primeiro forward")
+```python
+from transformers.models.gpt2.modeling_tf_gpt2 import TFGPT2Model
+from deeplazy.core.lazy_model import LazyModel
+from deeplazy.core.lazy_tensor_loader import LazyLoader
+from deeplazy.core.lazy_cache import TFLRULazyCache
+from deeplazy.enums.framework_enum import FrameworkType
 
-    outputs2 = model(**inputs)
-    print(outputs2)
+from transformers.models.gpt2.configuration_gpt2 import GPT2Config
 
-    print_memory("Após segundo forward")
+import tensorflow as tf
+
+tf_loader = LazyLoader(
+    weights_path=["/opt/repository/gpt2_safetensors/model.safetensors"],
+    device="/CPU:0",
+    cache_backend=TFLRULazyCache(capacity=4),
+    enable_monitor=True,
+    model_name="gpt2_tensorflow",
+    framework=FrameworkType.TENSORFLOW
+)
+
+
+tf_model = LazyModel(config=GPT2Config(), cls=TFGPT2Model, loader=tf_loader)
+tf_input = tf.constant([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
+tf_output = tf_model(input_ids=tf_input)
+print("TensorFlow GPT2 output:", tf_output.last_hidden_state.shape)
 ```
 
 ---
