@@ -35,8 +35,6 @@ from deeplazy.core.lazy_tensor_loader import LazyLoader
 import torch
 from deeplazy.enums.framework_enum import FrameworkType
 
-
-
 if __name__ == "__main__":
     pt_loader = LazyLoader(
         weights_path=["/opt/repository/gpt2_safetensors/model.safetensors"],
@@ -73,7 +71,6 @@ tf_loader = LazyLoader(
     model_name="gpt2_tensorflow",
     framework=FrameworkType.TENSORFLOW
 )
-
 
 tf_model = LazyModel(config=GPT2Config(), cls=TFGPT2Model, loader=tf_loader)
 tf_input = tf.constant([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
