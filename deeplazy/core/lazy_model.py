@@ -6,10 +6,15 @@ import torch
 
 
 class LazyModel(nn.Module):
-    def __init__(self, config, cls, loader):
+    def __init__(self, config=None, cls, loader):
         super().__init__()
         self.loader = loader
-        self.base_model = cls(config).to(self.loader.device)
+
+        if config is not None:
+            self.base_model = cls(config).to(self.loader.device)
+        else:
+            self.base_model = cls().to(self.loader.device)
+
         self.patcher = LazyModelPatcher(self.loader)
         self.model = self.patcher.patch(self.base_model)
 
