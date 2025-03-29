@@ -8,3 +8,4 @@ redis>=5.0.0
 rich>=13.10.0
 psutil>=6.0.0
 twine>=4.0.2
+accelerate>=0.26.0

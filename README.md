@@ -29,15 +29,26 @@ Below is a more detailed example demonstrating the use of DeepLazy with a GPT-2 
 
 ```python
 from deeplazy.core.lazy_model import LazyModel
-from transformers import AutoTokenizer, GPT2Model, GPT2Config
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from deeplazy.core.lazy_cache import PytorchLocalLRUCache
 from deeplazy.core.lazy_tensor_loader import LazyLoader
-import torch
 from deeplazy.enums.framework_enum import FrameworkType
+import torch
+import psutil
+import os
+
+
+def print_memory(stage=""):
+    process = psutil.Process(os.getpid())
+    mem = process.memory_info().rss / 1024**2
+    print(f"{stage}: {mem:.2f} MB")
+
 
 if __name__ == "__main__":
+    WEIGHTS_DIR = "/opt/repository/gpt2_lm"
+
     pt_loader = LazyLoader(
-        weights_path=["/opt/repository/gpt2_safetensors/model.safetensors"],
+        weights_dir=WEIGHTS_DIR,
         device="cpu",
         cache_backend=PytorchLocalLRUCache(capacity=10),
         enable_monitor=True,
@@ -45,37 +56,102 @@ if __name__ == "__main__":
         framework=FrameworkType.PYTORCH
     )
 
-    from transformers.models.gpt2.modeling_gpt2 import GPT2Model
-    pt_model = LazyModel(config=GPT2Config(), cls=GPT2Model, loader=pt_loader)
-    pt_input = torch.randint(0, 1000, (1, 10))
-    pt_output = pt_model(input_ids=pt_input)
-    print("PyTorch GPT2 output:", pt_output.last_hidden_state.shape)
+    # Inicializa o modelo lazy com o loader e a classe do modelo
+    pt_model = LazyModel(cls=GPT2LMHeadModel, loader=pt_loader)
+
+    # Tokenizer
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+    # Frase inicial
+    prompt = "The future of artificial intelligence is"
+
+    # Tokeniza a entrada
+    inputs = tokenizer(prompt, return_tensors="pt")
+
+    # Acessa o modelo real com lazy loading aplicado
+    model_for_generation = pt_model.model
+    model_for_generation.eval()
+
+    # Geração de texto
+    with torch.no_grad():
+        output_ids = model_for_generation.generate(
+            **inputs,
+            max_new_tokens=50,
+            do_sample=True,
+            top_k=50,
+            top_p=1,
+            temperature=0.01,
+            num_return_sequences=1
+        )
+
+    # Decodifica e imprime o texto gerado
+    generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+    print("📝 Texto gerado:")
+    print(generated_text)
 ```
 
 ```python
-from transformers.models.gpt2.modeling_tf_gpt2 import TFGPT2Model
 from deeplazy.core.lazy_model import LazyModel
-from deeplazy.core.lazy_tensor_loader import LazyLoader
+from transformers import TFGPT2LMHeadModel, GPT2Tokenizer
 from deeplazy.core.lazy_cache import TFLRULazyCache
+from deeplazy.core.lazy_tensor_loader import LazyLoader
 from deeplazy.enums.framework_enum import FrameworkType
-
-from transformers.models.gpt2.configuration_gpt2 import GPT2Config
-
 import tensorflow as tf
+import psutil
+import os
 
-tf_loader = LazyLoader(
-    weights_path=["/opt/repository/gpt2_safetensors/model.safetensors"],
-    device="/CPU:0",
-    cache_backend=TFLRULazyCache(capacity=4),
-    enable_monitor=True,
-    model_name="gpt2_tensorflow",
-    framework=FrameworkType.TENSORFLOW
-)
 
-tf_model = LazyModel(config=GPT2Config(), cls=TFGPT2Model, loader=tf_loader)
-tf_input = tf.constant([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]])
-tf_output = tf_model(input_ids=tf_input)
-print("TensorFlow GPT2 output:", tf_output.last_hidden_state.shape)
+def print_memory(stage=""):
+    process = psutil.Process(os.getpid())
+    mem = process.memory_info().rss / 1024**2
+    print(f"{stage}: {mem:.2f} MB")
+
+
+if __name__ == "__main__":
+    WEIGHTS_DIR = "/opt/repository/gpt2_lm"
+
+    tf_loader = LazyLoader(
+        weights_dir=WEIGHTS_DIR,
+        device="cpu",
+        cache_backend=TFLRULazyCache(capacity=10),
+        enable_monitor=True,
+        model_name="gpt2_tensorflow",
+        framework=FrameworkType.TENSORFLOW
+    )
+
+    # Inicializa o modelo lazy sem necessidade de config
+    lazy_model = LazyModel(cls=TFGPT2LMHeadModel, loader=tf_loader)
+
+    # Tokenizer
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+    # Prompt
+    prompt = "The future of artificial intelligence is"
+
+    # Tokeniza a entrada
+    inputs = tokenizer(prompt, return_tensors="tf")
+
+    model_for_generation = lazy_model.model
+    model_for_generation.trainable = False
+
+    # Geração
+    output_ids = model_for_generation.generate(
+        **inputs,
+        max_new_tokens=50,
+        do_sample=True,
+        top_k=50,
+        top_p=1.0,
+        temperature=0.01,
+        num_return_sequences=1
+    )
+
+    # Decodificação
+    generated_text = tokenizer.decode(
+        output_ids[0].numpy(), skip_special_tokens=True)
+
+    print("📝 Texto gerado:")
+    print(generated_text)
 ```
 
 ---
@@ -89,8 +165,6 @@ Enable a **real-time terminal dashboard** for:
 - Observing CPU/GPU usage
 - Measuring execution time per layer
 - Viewing final model statistics
-
-Activate by setting `enable_dashboard=True` in `.forward()`.
 
 ---
 
@@ -109,6 +183,10 @@ redis_config={'host': 'localhost', 'port': 6379, 'db': 0, 'prefix': 'layer_cache
 ```
 
 ---
+
+## 📊 Dashboard Example
+
+![Dashboard Example](./docs/dashboard.png)
 
 ## 📁 File Format
 

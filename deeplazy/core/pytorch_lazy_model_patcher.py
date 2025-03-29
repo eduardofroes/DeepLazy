@@ -1,15 +1,21 @@
 import torch
 import torch.nn as nn
 from functools import wraps
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import gc
+import threading
 
 
 class PytorchLazyModelPatcher:
-    def __init__(self, loader):
+    def __init__(self, loader, is_tied=False):
         self.loader = loader
         self.modules_by_name = {}
+        self.base_model_prefix = None
+        self.is_tied = is_tied
 
     def patch(self, model):
+        self.base_model_prefix = getattr(model, 'base_model_prefix', None)
         self._annotate_module_names(model)
         self._patch_module_instances()
         return model
@@ -17,54 +23,85 @@ class PytorchLazyModelPatcher:
     def _annotate_module_names(self, model):
         for name, module in model.named_modules():
             module._lazy_full_name = name
+            normalized = name
+            if self.base_model_prefix and name.startswith(f"{self.base_model_prefix}."):
+                normalized = name[len(self.base_model_prefix) + 1:]
+            module._lazy_normalized_name = normalized
             self.modules_by_name[name] = module
 
     def _patch_module_instances(self):
         for name, module in self.modules_by_name.items():
             if hasattr(module, '_lazy_wrapped'):
-                continue  # evita duplicar patch
-
+                continue
             if isinstance(module, nn.Module) and not isinstance(module, nn.Sequential):
                 self._wrap_instance_forward(module)
 
     def _wrap_instance_forward(self, module):
         orig_forward = module.forward
         loader_ref = self.loader
-        module._lazy_wrapped = True  # marca como patchado
+        module._lazy_wrapped = True
 
         @wraps(orig_forward)
         def wrapped_forward(*args, **kwargs):
             full_name = getattr(module, '_lazy_full_name', '')
-            backup = {}
+            normalized_name = getattr(
+                module, '_lazy_normalized_name', full_name)
 
-            if loader_ref.cache.get(full_name) is None:
-                loader_ref.load_module(full_name)
+            # Handle tied weights
+            if normalized_name == "lm_head" and loader_ref.cache.get("lm_head") is None:
+                if self.is_tied:
+                    if loader_ref.cache.get("wte") is None:
+                        loader_ref.load_module("wte")
+                    loader_ref.cache.put(
+                        "lm_head", loader_ref.cache.get("wte"))
+                else:
+                    loader_ref.load_module("lm_head")
 
-            module_weights = loader_ref.cache.get(full_name)
+            if loader_ref.cache.get(normalized_name) is None:
+                loader_ref.load_module(normalized_name)
+
+            module_weights = loader_ref.cache.get(normalized_name)
+            original_attrs = {}
+
             if module_weights is not None:
                 for param_name, tensor in module_weights.items():
-                    parts = param_name.split('.')
-                    obj = module
-                    for part in parts[:-1]:
-                        obj = getattr(obj, part)
-                    name = parts[-1]
+                    name_parts = param_name.split('.')
+                    target = module
+                    for part in name_parts[:-1]:
+                        target = getattr(target, part)
+                    name = name_parts[-1]
 
-                    if hasattr(obj, name):
-                        orig_attr = getattr(obj, name)
-                        backup[(obj, name)] = orig_attr
-                        delattr(obj, name)
-                        tensor = tensor.to(
-                            device=loader_ref.device, dtype=orig_attr.dtype)
-                        obj.register_buffer(name, tensor)
+                    if hasattr(target, name):
+                        original_attrs[(target, name)] = getattr(target, name)
+                        for attr_dict in [target._parameters, target._buffers, target.__dict__]:
+                            if name in attr_dict:
+                                attr_dict.pop(name, None)
+                        try:
+                            delattr(target, name)
+                        except Exception:
+                            pass
+
+                    tensor = tensor.to(dtype=torch.float32,
+                                       device=loader_ref.device)
+                    target.register_buffer(name, tensor)
+
+                if hasattr(module, 'masked_bias') and hasattr(module, 'bias'):
+                    module.masked_bias = module.bias
 
             result = orig_forward(*args, **kwargs)
 
-            for (obj, name), original in backup.items():
-                if hasattr(obj, name):
-                    delattr(obj, name)
-                obj.register_buffer(name, torch.empty(0, device="meta"))
+            for (target, name), orig_value in original_attrs.items():
+                if name in target._buffers:
+                    del target._buffers[name]
+                setattr(target, name, orig_value)
 
-            loader_ref.unload_module(full_name)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+
+            loader_ref.unload_module(normalized_name)
+
             return result
 
-        module.forward = wrapped_forward
+        if hasattr(module, 'weight') or hasattr(module, 'bias') or hasattr(module, 'masked_bias'):
+            module.forward = wrapped_forward

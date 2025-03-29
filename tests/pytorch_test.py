@@ -1,11 +1,11 @@
 from deeplazy.core.lazy_model import LazyModel
-from transformers import AutoTokenizer, GPT2Model, GPT2Config
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from deeplazy.core.lazy_cache import PytorchLocalLRUCache
 from deeplazy.core.lazy_tensor_loader import LazyLoader
+from deeplazy.enums.framework_enum import FrameworkType
 import torch
 import psutil
 import os
-from deeplazy.enums.framework_enum import FrameworkType
 
 
 def print_memory(stage=""):
@@ -15,9 +15,10 @@ def print_memory(stage=""):
 
 
 if __name__ == "__main__":
-    # PyTorch - Exemplo com Redis
+    WEIGHTS_DIR = "/opt/repository/gpt2_lm"
+
     pt_loader = LazyLoader(
-        weights_path=["/opt/repository/gpt2_safetensors/model.safetensors"],
+        weights_dir=WEIGHTS_DIR,
         device="cpu",
         cache_backend=PytorchLocalLRUCache(capacity=10),
         enable_monitor=True,
@@ -25,8 +26,36 @@ if __name__ == "__main__":
         framework=FrameworkType.PYTORCH
     )
 
-    from transformers.models.gpt2.modeling_gpt2 import GPT2Model
-    pt_model = LazyModel(config=GPT2Config(), cls=GPT2Model, loader=pt_loader)
-    pt_input = torch.randint(0, 1000, (1, 10))
-    pt_output = pt_model(input_ids=pt_input)
-    print("PyTorch GPT2 output:", pt_output.last_hidden_state.shape)
+    # Inicializa o modelo lazy com o loader e a classe do modelo
+    pt_model = LazyModel(cls=GPT2LMHeadModel, loader=pt_loader)
+
+    # Tokenizer
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+    # Frase inicial
+    prompt = "The future of artificial intelligence is"
+
+    # Tokeniza a entrada
+    inputs = tokenizer(prompt, return_tensors="pt")
+
+    # Acessa o modelo real com lazy loading aplicado
+    model_for_generation = pt_model.model
+    model_for_generation.eval()
+
+    # Geração de texto
+    with torch.no_grad():
+        output_ids = model_for_generation.generate(
+            **inputs,
+            max_new_tokens=50,
+            do_sample=True,
+            top_k=50,
+            top_p=1,
+            temperature=0.01,
+            num_return_sequences=1
+        )
+
+    # Decodifica e imprime o texto gerado
+    generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+    print("📝 Texto gerado:")
+    print(generated_text)
