@@ -40,7 +40,6 @@ class PytorchLocalLRUCache(BaseCacheBackend):
         if len(self.cache) > self.capacity:
             old_key, old_val = self.cache.popitem(last=False)
             del old_val
-            gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
@@ -71,7 +70,6 @@ class TFLRULazyCache(BaseCacheBackend):
         elif len(self.cache) >= self.capacity:
             oldest_key = self.access_order.pop(0)
             del self.cache[oldest_key]
-            gc.collect()
 
         self.cache[key] = value
         self.access_order.append(key)

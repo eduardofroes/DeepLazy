@@ -28,12 +28,13 @@ pip install deeplazy
 Below is a more detailed example demonstrating the use of DeepLazy with a GPT-2 model:
 
 ```python
+import torch
 from deeplazy.core.lazy_model import LazyModel
-from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from deeplazy.core.lazy_cache import PytorchLocalLRUCache
 from deeplazy.core.lazy_tensor_loader import LazyLoader
 from deeplazy.enums.framework_enum import FrameworkType
-import torch
+
+from transformers import AutoTokenizer, AutoConfig, GenerationConfig, AutoModelForCausalLM
 import psutil
 import os
 
@@ -45,50 +46,55 @@ def print_memory(stage=""):
 
 
 if __name__ == "__main__":
-    WEIGHTS_DIR = "/opt/repository/gpt2_lm"
+    WEIGHTS_DIR = "/opt/repository/deepseek_qwen"
 
+    # 🔁 Inicializa o loader com lazy loading
     pt_loader = LazyLoader(
         weights_dir=WEIGHTS_DIR,
-        device="cpu",
-        cache_backend=PytorchLocalLRUCache(capacity=10),
+        device="cpu",  # ou "cuda" se preferir
+        cache_backend=PytorchLocalLRUCache(capacity=6),
         enable_monitor=True,
-        model_name="gpt2_pytorch",
+        model_name="deepseek-qwen-1.5b",
         framework=FrameworkType.PYTORCH
     )
 
-    # Inicializa o modelo lazy com o loader e a classe do modelo
-    pt_model = LazyModel(cls=GPT2LMHeadModel, loader=pt_loader)
+    # ⚙️ Carrega config do modelo
+    config = AutoConfig.from_pretrained(WEIGHTS_DIR, trust_remote_code=True)
 
-    # Tokenizer
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    # 🧠 Cria o modelo com LazyModel
+    pt_model = LazyModel(
+        cls=AutoModelForCausalLM,
+        loader=pt_loader,
+    )
 
-    # Frase inicial
-    prompt = "The future of artificial intelligence is"
-
-    # Tokeniza a entrada
-    inputs = tokenizer(prompt, return_tensors="pt")
-
-    # Acessa o modelo real com lazy loading aplicado
     model_for_generation = pt_model.model
+    model_for_generation.generation_config = GenerationConfig.from_pretrained(
+        WEIGHTS_DIR, trust_remote_code=True)
+    model_for_generation.generation_config.pad_token_id = model_for_generation.generation_config.eos_token_id
     model_for_generation.eval()
 
-    # Geração de texto
+    # 🧾 Tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(
+        WEIGHTS_DIR, trust_remote_code=True)
+
+    # 💬 Conversa
+    messages = [
+        {"role": "user", "content": "Write a piece of quicksort code in C++"}
+    ]
+    input_tensor = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, return_tensors="pt")
+
+    # ✨ Geração
     with torch.no_grad():
-        output_ids = model_for_generation.generate(
-            **inputs,
-            max_new_tokens=50,
-            do_sample=True,
-            top_k=50,
-            top_p=1,
-            temperature=0.01,
-            num_return_sequences=1
+        outputs = model_for_generation.generate(
+            input_tensor.to(pt_loader.device),
+            max_new_tokens=10
         )
 
-    # Decodifica e imprime o texto gerado
-    generated_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-
-    print("📝 Texto gerado:")
-    print(generated_text)
+    result = tokenizer.decode(
+        outputs[0][input_tensor.shape[1]:], skip_special_tokens=True)
+    print("📝 Resposta gerada:")
+    print(result)
 ```
 
 ```python

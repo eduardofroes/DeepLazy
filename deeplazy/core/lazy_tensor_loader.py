@@ -62,7 +62,7 @@ class LazyLoader:
             for key in handler.keys():
                 self.key_to_handler[key] = handler
 
-    def load_module(self, module_name):
+    def load_module(self, module_name, base_model_prefix=None):
         self._init_file_handlers()
         if self.cache and (cached := self.cache.get(module_name)):
             return
@@ -70,9 +70,12 @@ class LazyLoader:
         module_weights = {}
         start_time = time.time()
 
+        # Corrigido para evitar erro de NoneType + str
+        prefix = (base_model_prefix + ".") if base_model_prefix else ""
+
         for key, handler in self.key_to_handler.items():
-            if key.startswith(module_name + "."):
-                short_key = key[len(module_name) + 1:]
+            if key.replace(prefix, "").startswith(module_name + "."):
+                short_key = key[len(module_name):]
                 if short_key not in module_weights:
                     tensor = handler.get_tensor(key)
                     if self.framework == FrameworkType.TENSORFLOW:

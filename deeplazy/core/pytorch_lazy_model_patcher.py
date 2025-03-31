@@ -51,28 +51,28 @@ class PytorchLazyModelPatcher:
             if normalized_name == "lm_head" and loader_ref.cache.get("lm_head") is None:
                 if self.is_tied:
                     if loader_ref.cache.get("wte") is None:
-                        loader_ref.load_module("wte")
+                        loader_ref.load_module("wte", self.base_model_prefix)
                     loader_ref.cache.put(
                         "lm_head", loader_ref.cache.get("wte"))
                 else:
-                    loader_ref.load_module("lm_head")
+                    loader_ref.load_module("lm_head", self.base_model_prefix)
 
             if loader_ref.cache.get(normalized_name) is None:
-                loader_ref.load_module(normalized_name)
+                loader_ref.load_module(normalized_name, self.base_model_prefix)
 
             module_weights = loader_ref.cache.get(normalized_name)
-            original_attrs = {}
+            original_attrs = []
+
+            module.to_empty(device=loader_ref.device)
 
             if module_weights is not None:
                 for param_name, tensor in module_weights.items():
                     name_parts = param_name.split('.')
                     target = module
-                    for part in name_parts[:-1]:
-                        target = getattr(target, part)
                     name = name_parts[-1]
 
                     if hasattr(target, name):
-                        original_attrs[(target, name)] = getattr(target, name)
+                        original_attrs.append(name)
                         for attr_dict in [target._parameters, target._buffers, target.__dict__]:
                             if name in attr_dict:
                                 attr_dict.pop(name, None)
@@ -90,10 +90,9 @@ class PytorchLazyModelPatcher:
 
             result = orig_forward(*args, **kwargs)
 
-            for (target, name), orig_value in original_attrs.items():
-                if name in target._buffers:
-                    del target._buffers[name]
-                setattr(target, name, orig_value)
+            for name in original_attrs:
+                delattr(module, name)
+                setattr(module, name, None)
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

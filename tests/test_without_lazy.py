@@ -1,48 +1,59 @@
-from transformers import GPT2LMHeadModel, GPT2Tokenizer, GPT2Config
 import torch
+from transformers import AutoTokenizer, AutoConfig, GenerationConfig, AutoModelForCausalLM
 import psutil
 import os
 
-# Função para medir o uso de memória do processo atual
 
-
-def print_memory(stage):
+def print_memory(stage=""):
     process = psutil.Process(os.getpid())
-    mem_mb = process.memory_info().rss / 1024**2
-    print(f"{stage} | Memória usada: {mem_mb:.2f} MB")
+    mem = process.memory_info().rss / 1024**2
+    print(f"{stage}: {mem:.2f} MB")
 
 
-# Caminho local onde o modelo foi baixado (com .safetensors, config.json, etc)
-MODEL_DIR = "/opt/repository/gpt2_lm"
+if __name__ == "__main__":
+    WEIGHTS_DIR = "/opt/repository/deepseek_qwen"
 
-# Carrega o tokenizer e o modelo a partir do diretório local
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-model = GPT2LMHeadModel(GPT2Config.from_pretrained(MODEL_DIR))
-model.eval()
+    # 🔁 Imprime memória antes de carregar o modelo
+    print_memory("Antes de carregar o modelo")
 
-# Prompt de entrada
-prompt = "The future of artificial intelligence is"
-inputs = tokenizer(prompt, return_tensors="pt")
+    # ⚙️ Carrega config
+    config = AutoConfig.from_pretrained(WEIGHTS_DIR, trust_remote_code=True)
 
-# 📏 Memória antes da geração
-print_memory("Antes da geração")
+    # 🧠 Carrega modelo inteiro na memória
+    model = AutoModelForCausalLM.from_pretrained(
+        WEIGHTS_DIR, trust_remote_code=True, torch_dtype=torch.float32)
+    model.eval()
 
-# Gera texto
-with torch.no_grad():
-    output = model.generate(
-        **inputs,
-        max_new_tokens=50,
-        do_sample=True,
-        top_k=50,
-        top_p=1,
-        temperature=0.01,
-        num_return_sequences=1
-    )
+    # 🔁 Imprime memória após carregar o modelo
+    print_memory("Depois de carregar o modelo")
 
-# 📏 Memória após a geração
-print_memory("Após a geração")
+    # ⚙️ Config de geração
+    model.generation_config = GenerationConfig.from_pretrained(
+        WEIGHTS_DIR, trust_remote_code=True)
+    model.generation_config.pad_token_id = model.generation_config.eos_token_id
 
-# Decodifica e exibe
-generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
-print("📝 Texto gerado:")
-print(generated_text)
+    # 🧾 Tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(
+        WEIGHTS_DIR, trust_remote_code=True)
+
+    # 💬 Conversa
+    messages = [
+        {"role": "user", "content": "Write a piece of quicksort code in C++"}
+    ]
+    input_tensor = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, return_tensors="pt")
+
+    # ✨ Geração
+    with torch.no_grad():
+        outputs = model.generate(
+            input_tensor.to("cpu"),
+            max_new_tokens=100
+        )
+
+    result = tokenizer.decode(
+        outputs[0][input_tensor.shape[1]:], skip_special_tokens=True)
+    print("📝 Resposta gerada:")
+    print(result)
+
+    # 🔁 Imprime memória após geração
+    print_memory("Após geração")
