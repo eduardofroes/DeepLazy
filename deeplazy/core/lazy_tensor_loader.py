@@ -2,7 +2,7 @@ import os
 import time
 import gc
 from typing import Union
-from safetensors.torch import safe_open
+from safetensors import safe_open
 from deeplazy.enums.framework_enum import FrameworkType
 
 
@@ -80,7 +80,7 @@ class LazyLoader:
                     tensor = handler.get_tensor(key)
                     if self.framework == FrameworkType.TENSORFLOW:
                         import tensorflow as tf
-                        tensor = tf.convert_to_tensor(tensor.numpy())
+                        tensor = tf.convert_to_tensor(tensor)
                     module_weights[short_key] = tensor
 
         if module_weights and self.cache:
@@ -98,6 +98,18 @@ class LazyLoader:
                 if self.device.type == 'cuda':
                     torch.cuda.empty_cache()
                     torch.cuda.ipc_collect()
+            elif self.framework == FrameworkType.TENSORFLOW:
+                import tensorflow as tf
+                try:
+                    tf.keras.backend.clear_session()
+                except Exception:
+                    pass
+                try:
+                    if hasattr(tf.config.experimental, 'clear_memory'):
+                        tf.config.experimental.clear_memory()
+                except Exception:
+                    pass
+                gc.collect()
 
         self.file_handlers = []
         self.key_to_handler = {}
