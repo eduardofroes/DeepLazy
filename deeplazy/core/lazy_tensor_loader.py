@@ -16,18 +16,39 @@ class LazyLoader:
         self.monitor = None
         self.weights_dir = weights_dir
 
-        # Busca todos os arquivos .safetensors no diretório
+        # Busca formatos suportados no diretório
         self.weights_paths = [
             os.path.join(weights_dir, f)
             for f in os.listdir(weights_dir)
             if f.endswith('.safetensors')
         ]
+        self.weights_format = 'safetensors'
+
+        if not self.weights_paths:
+            if self.framework == FrameworkType.PYTORCH:
+                self.weights_paths = [
+                    os.path.join(weights_dir, f)
+                    for f in os.listdir(weights_dir)
+                    if f.endswith('.pth')
+                ]
+                self.weights_format = 'pth'
+            elif self.framework == FrameworkType.TENSORFLOW:
+                self.weights_paths = [
+                    os.path.join(weights_dir, f)
+                    for f in os.listdir(weights_dir)
+                    if f.endswith('.ckpt') or f.endswith('.h5')
+                ]
+                if self.weights_paths:
+                    if self.weights_paths[0].endswith('.h5'):
+                        self.weights_format = 'h5'
+                    else:
+                        self.weights_format = 'ckpt'
 
         if not self.weights_paths:
             raise FileNotFoundError(
-                f"No files .safetensors found in {weights_dir}")
+                f"No supported weight files found in {weights_dir}")
 
-        self.is_safetensors = True
+        self.is_safetensors = self.weights_format == 'safetensors'
         self.file_handlers = []
         self.key_to_handler = {}
 
@@ -56,11 +77,35 @@ class LazyLoader:
             return
 
         for path in self.weights_paths:
-            handler = safe_open(
-                path, framework=self.framework.value, device='cpu')
-            self.file_handlers.append(handler)
-            for key in handler.keys():
-                self.key_to_handler[key] = handler
+            if self.weights_format == 'safetensors':
+                handler = safe_open(
+                    path, framework=self.framework.value, device='cpu')
+                self.file_handlers.append(handler)
+                for key in handler.keys():
+                    self.key_to_handler[key] = handler
+            elif self.weights_format == 'pth':
+                import torch
+                state_dict = torch.load(path, map_location='cpu')
+                self.file_handlers.append(state_dict)
+                for key in state_dict.keys():
+                    self.key_to_handler[key] = state_dict
+            elif self.weights_format == 'ckpt':
+                import tensorflow as tf
+                reader = tf.train.load_checkpoint(path)
+                self.file_handlers.append(reader)
+                for key, _ in tf.train.list_variables(path):
+                    self.key_to_handler[key] = reader
+            elif self.weights_format == 'h5':
+                import h5py
+                f = h5py.File(path, 'r')
+                self.file_handlers.append(f)
+                def _collect(name, obj):
+                    if isinstance(obj, h5py.Dataset):
+                        collected.append(name)
+                collected = []
+                f.visititems(_collect)
+                for key in collected:
+                    self.key_to_handler[key] = f
 
     def load_module(self, module_name, base_model_prefix=None):
         self._init_file_handlers()
@@ -77,7 +122,14 @@ class LazyLoader:
             if key.replace(prefix, "").startswith(module_name + "."):
                 short_key = key[len(module_name):]
                 if short_key not in module_weights:
-                    tensor = handler.get_tensor(key)
+                    if self.weights_format in ('safetensors', 'ckpt'):
+                        tensor = handler.get_tensor(key)
+                    elif self.weights_format == 'pth':
+                        tensor = handler[key]
+                    elif self.weights_format == 'h5':
+                        tensor = handler[key][()]
+                    else:
+                        continue
                     if self.framework == FrameworkType.TENSORFLOW:
                         import tensorflow as tf
                         tensor = tf.convert_to_tensor(tensor)
