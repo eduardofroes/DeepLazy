@@ -196,7 +196,9 @@ redis_config={'host': 'localhost', 'port': 6379, 'db': 0, 'prefix': 'layer_cache
 
 ## 📁 File Format
 
-- Utilizes **`.safetensors` format with index.json**.
+- Supports **`.safetensors`** with `index.json` for both frameworks.
+- Loads traditional **PyTorch `.pth`** checkpoints.
+- Handles TensorFlow **`.ckpt`** or **`.h5`** weights as well.
 - Compatible with models exported via 🤗 Transformers or custom serialization.
 
 ---

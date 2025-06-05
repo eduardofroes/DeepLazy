@@ -65,8 +65,7 @@ class TensorflowLazyModelPatcher:
                     if hasattr(layer, weight_name):
                         original_attrs[weight_name] = getattr(
                             layer, weight_name)
-                    tensor_on_device = tf.convert_to_tensor(
-                        weight_value.numpy())
+                    tensor_on_device = tf.convert_to_tensor(weight_value)
                     setattr(layer, weight_name, tensor_on_device)
 
             output = orig_call(*args, **kwargs)
