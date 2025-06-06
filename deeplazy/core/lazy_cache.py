@@ -69,7 +69,15 @@ class TFLRULazyCache(BaseCacheBackend):
             self.access_order.remove(key)
         elif len(self.cache) >= self.capacity:
             oldest_key = self.access_order.pop(0)
-            del self.cache[oldest_key]
+            old_val = self.cache.pop(oldest_key)
+            del old_val
+            try:
+                tf.keras.backend.clear_session()
+                if hasattr(tf.config.experimental, 'clear_memory'):
+                    tf.config.experimental.clear_memory()
+            except Exception:
+                pass
+            gc.collect()
 
         self.cache[key] = value
         self.access_order.append(key)
@@ -77,7 +85,16 @@ class TFLRULazyCache(BaseCacheBackend):
     def pop(self, key):
         if key in self.cache:
             self.access_order.remove(key)
-            return self.cache.pop(key)
+            val = self.cache.pop(key)
+            del val
+            try:
+                tf.keras.backend.clear_session()
+                if hasattr(tf.config.experimental, 'clear_memory'):
+                    tf.config.experimental.clear_memory()
+            except Exception:
+                pass
+            gc.collect()
+            return val
         return None
 
     def keys(self):
