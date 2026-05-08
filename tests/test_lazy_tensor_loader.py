@@ -109,11 +109,14 @@ def test_safetensors_loading(tmp_path, fake_torch):
 
     from deeplazy.core.lazy_tensor_loader import LazyLoader
 
+    # use_mmap=False so the monkeypatched safe_open is exercised, not the
+    # MmapSafetensorsFile parser (which would reject the dummy 'x' content).
     loader = LazyLoader(
         weights_dir=str(weights_dir),
         device='cpu',
         cache_backend=DummyCache(),
-        framework=FrameworkType.PYTORCH
+        framework=FrameworkType.PYTORCH,
+        use_mmap=False,
     )
     loader.load_module('layer')
     assert loader.weights_format == 'safetensors'
